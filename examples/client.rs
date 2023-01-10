@@ -11,7 +11,7 @@ async fn main() {
 
     let server_addr = "127.0.0.1:3100".parse::<SocketAddr>().unwrap();
 
-    let mut stream = KcpStream::connect(&config, server_addr).await.unwrap();
+    let mut stream = KcpStream::connect(&config, server_addr, 114514).await.unwrap();
 
     let mut buffer = [0u8; 8192];
     let mut i = stdin();

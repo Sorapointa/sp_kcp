@@ -82,15 +82,16 @@ impl KcpSocket {
     pub fn new(
         c: &KcpConfig,
         conv: u32,
+        token: u32,
         socket: Arc<UdpSocket>,
         target_addr: SocketAddr,
         stream: bool,
     ) -> KcpResult<KcpSocket> {
         let output = UdpOutput::new(socket.clone(), target_addr);
         let mut kcp = if stream {
-            Kcp::new_stream(conv, output)
+            Kcp::new_stream(conv, token, output)
         } else {
-            Kcp::new(conv, output)
+            Kcp::new(conv, token, output)
         };
         c.apply_config(&mut kcp);
 
@@ -352,8 +353,9 @@ mod test {
         let s2 = Arc::new(s2);
 
         let config = KcpConfig::default();
-        let kcp1 = KcpSocket::new(&config, 0, s1.clone(), s2_addr, true).unwrap();
-        let kcp2 = KcpSocket::new(&config, CONV, s2.clone(), s1_addr, true).unwrap();
+        let token = 114514;
+        let kcp1 = KcpSocket::new(&config, 0, token, s1.clone(), s2_addr, true).unwrap();
+        let kcp2 = KcpSocket::new(&config, CONV, token, s2.clone(), s1_addr, true).unwrap();
 
         let kcp1 = Arc::new(Mutex::new(kcp1));
         let kcp2 = Arc::new(Mutex::new(kcp2));

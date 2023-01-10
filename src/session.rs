@@ -287,6 +287,7 @@ impl KcpSessionManager {
         &mut self,
         config: &KcpConfig,
         conv: u32,
+        token: u32,
         sn: u32,
         udp: &Arc<UdpSocket>,
         peer_addr: SocketAddr,
@@ -300,7 +301,7 @@ impl KcpSessionManager {
                     // This is the first packet received from this peer.
                     // Recreate a new session for this specific client.
 
-                    let socket = KcpSocket::new(config, conv, udp.clone(), peer_addr, config.stream)?;
+                    let socket = KcpSocket::new(config, conv, token, udp.clone(), peer_addr, config.stream)?;
                     let session = KcpSession::new_shared(
                         socket,
                         config.session_expire,
@@ -322,7 +323,7 @@ impl KcpSessionManager {
                 }
             }
             Entry::Vacant(vac) => {
-                let socket = KcpSocket::new(config, conv, udp.clone(), peer_addr, config.stream)?;
+                let socket = KcpSocket::new(config, conv, token, udp.clone(), peer_addr, config.stream)?;
                 let session = KcpSession::new_shared(
                     socket,
                     config.session_expire,
