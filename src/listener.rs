@@ -31,13 +31,13 @@ impl Drop for KcpListener {
 
 impl KcpListener {
     /// Create an `KcpListener` bound to `addr`
-    pub async fn bind<A: ToSocketAddrs>(config: KcpConfig, addr: A, token: u32) -> KcpResult<KcpListener> {
+    pub async fn bind<A: ToSocketAddrs>(config: KcpConfig, addr: A) -> KcpResult<KcpListener> {
         let udp = UdpSocket::bind(addr).await?;
-        KcpListener::from_socket(config, udp, token).await
+        KcpListener::from_socket(config, udp).await
     }
 
     /// Create a `KcpListener` from an existed `UdpSocket`
-    pub async fn from_socket(config: KcpConfig, udp: UdpSocket, token: u32) -> KcpResult<KcpListener> {
+    pub async fn from_socket(config: KcpConfig, udp: UdpSocket) -> KcpResult<KcpListener> {
         let udp = Arc::new(udp);
         let server_udp = udp.clone();
 
@@ -74,6 +74,8 @@ impl KcpListener {
 
                                     kcp::set_conv(packet, conv);
                                 }
+
+                                let token = kcp::get_token(packet);
 
                                 let sn = kcp::get_sn(packet);
 
@@ -171,7 +173,7 @@ mod test {
 
         let config = KcpConfig::default();
 
-        let mut listener = KcpListener::bind(config, "127.0.0.1:0", 114514).await.unwrap();
+        let mut listener = KcpListener::bind(config, "127.0.0.1:0").await.unwrap();
         let server_addr = listener.local_addr().unwrap();
 
         tokio::spawn(async move {
@@ -197,7 +199,7 @@ mod test {
 
         for _ in 0..100 {
             vfut.push(async move {
-                let mut stream = KcpStream::connect(&config, server_addr, 114514).await.unwrap();
+                let mut stream = KcpStream::connect(&config, server_addr).await.unwrap();
 
                 for _ in 0..20 {
                     const SEND_BUFFER: &[u8] = b"HELLO WORLD";

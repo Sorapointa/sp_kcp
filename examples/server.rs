@@ -16,7 +16,7 @@ async fn main() {
 
     let server_addr = "127.0.0.1:3100".parse::<SocketAddr>().unwrap();
 
-    let mut listener = KcpListener::bind(config, server_addr, 114514).await.unwrap();
+    let mut listener = KcpListener::bind(config, server_addr).await.unwrap();
 
     loop {
         let (mut stream, peer_addr) = match listener.accept().await {

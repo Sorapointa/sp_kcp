@@ -31,19 +31,20 @@ impl Drop for KcpStream {
 
 impl KcpStream {
     /// Create a `KcpStream` connecting to `addr`
-    pub async fn connect(config: &KcpConfig, addr: SocketAddr, token: u32) -> KcpResult<KcpStream> {
+    pub async fn connect(config: &KcpConfig, addr: SocketAddr) -> KcpResult<KcpStream> {
         let udp = match addr.ip() {
             IpAddr::V4(..) => UdpSocket::bind("0.0.0.0:0").await?,
             IpAddr::V6(..) => UdpSocket::bind("[::]:0").await?,
         };
 
-        KcpStream::connect_with_socket(config, udp, addr, token).await
+         KcpStream::connect_with_socket(config, udp, addr).await
     }
 
     /// Create a `KcpStream` with an existed `UdpSocket` connecting to `addr`
-    pub async fn connect_with_socket(config: &KcpConfig, udp: UdpSocket, addr: SocketAddr, token: u32) -> KcpResult<KcpStream> {
+    pub async fn connect_with_socket(config: &KcpConfig, udp: UdpSocket, addr: SocketAddr) -> KcpResult<KcpStream> {
         let udp = Arc::new(udp);
         let conv = rand::random();
+        let token = rand::random();
         let socket = KcpSocket::new(config, conv, token, udp, addr, config.stream)?;
 
         let session = KcpSession::new_shared(socket, config.session_expire, None);
