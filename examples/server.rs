@@ -18,6 +18,8 @@ async fn main() {
 
     let mut listener = KcpListener::bind(config, server_addr).await.unwrap();
 
+    let _sessions = &listener.sessions;
+
     loop {
         let (mut stream, peer_addr) = match listener.accept().await {
             Ok(s) => s,

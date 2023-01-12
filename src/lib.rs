@@ -2,12 +2,14 @@
 
 pub use self::{
     config::{KcpConfig, KcpNoDelayConfig},
-    listener::KcpListener,
+    listener::{KcpListener},
+    session::KcpSessionManager,
     stream::KcpStream,
 };
 
 mod config;
 mod listener;
+mod handshake;
 mod session;
 mod skcp;
 mod stream;

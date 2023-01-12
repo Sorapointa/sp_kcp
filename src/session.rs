@@ -1,5 +1,4 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     ops::Deref,
     sync::{
@@ -9,7 +8,9 @@ use std::{
     time::Duration,
 };
 
+
 use byte_string::ByteStr;
+use dashmap::{DashMap, mapref::entry::Entry};
 use kcp::KcpResult;
 use log::{error, trace};
 use spin::Mutex as SpinMutex;
@@ -259,32 +260,33 @@ impl Deref for KcpSessionUniq {
     type Target = KcpSession;
 
     fn deref(&self) -> &KcpSession {
-        &*self.0
+        &self.0
     }
 }
 
+#[derive(Clone, Default)]
 pub struct KcpSessionManager {
-    sessions: HashMap<SocketAddr, KcpSessionUniq>,
+    sessions: Arc<DashMap<SocketAddr, KcpSessionUniq>>,
 }
 
 impl KcpSessionManager {
     pub fn new() -> KcpSessionManager {
         KcpSessionManager {
-            sessions: HashMap::new(),
+            sessions: Arc::new(DashMap::new()),
         }
     }
 
     #[inline]
-    pub fn alloc_conv(&mut self) -> u32 {
+    pub fn alloc_conv(&self) -> u32 {
         rand::random()
     }
 
-    pub fn close_peer(&mut self, peer_addr: SocketAddr) {
+    pub fn close_peer(&self, peer_addr: SocketAddr) {
         self.sessions.remove(&peer_addr);
     }
 
     pub async fn get_or_create(
-        &mut self,
+        &self,
         config: &KcpConfig,
         conv: u32,
         token: u32,

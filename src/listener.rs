@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     io::{self, ErrorKind},
     net::SocketAddr,
     sync::Arc,
@@ -6,6 +7,7 @@ use std::{
 };
 
 use byte_string::ByteStr;
+use bytes::Buf;
 use kcp::{Error as KcpError, KcpResult};
 use log::{debug, error, trace};
 use tokio::{
@@ -15,12 +17,18 @@ use tokio::{
     time,
 };
 
-use crate::{config::KcpConfig, session::KcpSessionManager, stream::KcpStream};
+use crate::{
+    config::KcpConfig,
+    handshake::{HandshakePacket, HANDSHAKE_RET_CODE, HANDSHAKE_RET_MAGIC},
+    session::KcpSessionManager,
+    stream::KcpStream,
+};
 
 pub struct KcpListener {
     udp: Arc<UdpSocket>,
     accept_rx: mpsc::Receiver<(KcpStream, SocketAddr)>,
     task_watcher: JoinHandle<()>,
+    pub sessions: KcpSessionManager,
 }
 
 impl Drop for KcpListener {
@@ -42,16 +50,19 @@ impl KcpListener {
         let server_udp = udp.clone();
 
         let (accept_tx, accept_rx) = mpsc::channel(1024 /* backlogs */);
+        let sessions = KcpSessionManager::new();
+        // KcpSessionManager has Arc internally
+        let sessions_clone = KcpSessionManager::clone(&sessions);
+
         let task_watcher = tokio::spawn(async move {
             let (close_tx, mut close_rx) = mpsc::channel(64);
 
-            let mut sessions = KcpSessionManager::new();
             let mut packet_buffer = [0u8; 65536];
             loop {
                 tokio::select! {
                     peer_addr = close_rx.recv() => {
                         let peer_addr = peer_addr.expect("close_tx closed unexpectly");
-                        sessions.close_peer(peer_addr);
+                        sessions_clone.close_peer(peer_addr);
                         trace!("session peer_addr: {} removed", peer_addr);
                     }
 
@@ -62,24 +73,30 @@ impl KcpListener {
                                 time::sleep(Duration::from_secs(1)).await;
                             }
                             Ok((n, peer_addr)) => {
+                                let token;
+                                let mut conv;
                                 let packet = &mut packet_buffer[..n];
+                                let mut sn = 0;
+
+                                if n == 20 {
+                                    conv = (&packet[4..]).get_u32_le();
+                                    token = (&packet[8..]).get_u32_le();
+                                } else {
+                                    conv = kcp::get_conv(packet);
+                                    token = kcp::get_token(packet);
+                                    sn = kcp::get_sn(packet);
+                                    if conv == 0 {
+                                        // Allocate a conv for client.
+                                        conv = sessions_clone.alloc_conv();
+                                        debug!("allocate {} conv for peer: {}", conv, peer_addr);
+
+                                        kcp::set_conv(packet, conv);
+                                    }
+                                }
 
                                 log::trace!("received peer: {}, {:?}", peer_addr, ByteStr::new(packet));
 
-                                let mut conv = kcp::get_conv(packet);
-                                if conv == 0 {
-                                    // Allocate a conv for client.
-                                    conv = sessions.alloc_conv();
-                                    debug!("allocate {} conv for peer: {}", conv, peer_addr);
-
-                                    kcp::set_conv(packet, conv);
-                                }
-
-                                let token = kcp::get_token(packet);
-
-                                let sn = kcp::get_sn(packet);
-
-                                let session = match sessions.get_or_create(&config, conv, token, sn, &udp, peer_addr, &close_tx).await {
+                                let session = match sessions_clone.get_or_create(&config, conv, token, sn, &udp, peer_addr, &close_tx).await {
                                     Ok((s, created)) => {
                                         if created {
                                             // Created a new session, constructed a new accepted client
@@ -88,7 +105,7 @@ impl KcpListener {
                                                 debug!("failed to create accepted stream due to channel failure");
 
                                                 // remove it from session
-                                                sessions.close_peer(peer_addr);
+                                                sessions_clone.close_peer(peer_addr);
                                                 continue;
                                             }
                                         } else {
@@ -110,11 +127,21 @@ impl KcpListener {
                                     }
                                 };
 
-                                // let mut kcp = session.kcp_socket().lock().await;
-                                // if let Err(err) = kcp.input(packet) {
-                                //     error!("kcp.input failed, peer: {}, conv: {}, error: {}, packet: {:?}", peer_addr, conv, err, ByteStr::new(packet));
-                                // }
-                                session.input(packet).await;
+                                if n == 20 {
+                                    let mut handshake_packet = HandshakePacket::parse(
+                                        packet[..20].try_into().unwrap()
+                                    );
+                                    if handshake_packet.is_handshake() {
+                                        handshake_packet.code = HANDSHAKE_RET_CODE;
+                                        handshake_packet.end_magic = HANDSHAKE_RET_MAGIC;
+                                        session.input(&handshake_packet.to_bytes()).await;
+                                    }
+                                    if handshake_packet.is_disconnect() {
+                                        sessions_clone.close_peer(peer_addr);
+                                    }
+                                } else {
+                                    session.input(packet).await;
+                                }
                             }
                         }
                     }
@@ -126,6 +153,7 @@ impl KcpListener {
             udp: server_udp,
             accept_rx,
             task_watcher,
+            sessions,
         })
     }
 
