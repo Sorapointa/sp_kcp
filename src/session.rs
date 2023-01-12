@@ -248,7 +248,7 @@ impl KcpSession {
     }
 }
 
-struct KcpSessionUniq(Arc<KcpSession>);
+pub struct KcpSessionUniq(Arc<KcpSession>);
 
 impl Drop for KcpSessionUniq {
     fn drop(&mut self) {
@@ -266,7 +266,7 @@ impl Deref for KcpSessionUniq {
 
 #[derive(Clone, Default)]
 pub struct KcpSessionManager {
-    sessions: Arc<DashMap<SocketAddr, KcpSessionUniq>>,
+    pub sessions: Arc<DashMap<SocketAddr, KcpSessionUniq>>,
 }
 
 impl KcpSessionManager {
